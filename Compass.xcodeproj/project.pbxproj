@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1784C5BA2DB351E700CB1DF7 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 1784C5B92DB351E400CB1DF7 /* README.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		1784C57A2DB3427E00CB1DF7 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		1784C5632DB3427B00CB1DF7 /* Compass.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Compass.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1784C5792DB3427E00CB1DF7 /* CompassTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CompassTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1784C5832DB3427E00CB1DF7 /* CompassUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CompassUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1784C5B92DB351E400CB1DF7 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -56,6 +61,11 @@
 		1784C5862DB3427E00CB1DF7 /* CompassUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = CompassUITests;
+			sourceTree = "<group>";
+		};
+		1784C5BB2DB351EA00CB1DF7 /* Documentation */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Documentation;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -88,6 +98,8 @@
 		1784C55A2DB3427B00CB1DF7 = {
 			isa = PBXGroup;
 			children = (
+				1784C5B92DB351E400CB1DF7 /* README.md */,
+				1784C5BB2DB351EA00CB1DF7 /* Documentation */,
 				1784C5652DB3427B00CB1DF7 /* Compass */,
 				1784C57C2DB3427E00CB1DF7 /* CompassTests */,
 				1784C5862DB3427E00CB1DF7 /* CompassUITests */,
@@ -122,6 +134,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				1784C5652DB3427B00CB1DF7 /* Compass */,
+				1784C5BB2DB351EA00CB1DF7 /* Documentation */,
 			);
 			name = Compass;
 			packageProductDependencies = (
@@ -225,6 +238,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1784C5BA2DB351E700CB1DF7 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -294,7 +308,6 @@
 				INFOPLIST_FILE = Compass/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -322,7 +335,6 @@
 				INFOPLIST_FILE = Compass/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
