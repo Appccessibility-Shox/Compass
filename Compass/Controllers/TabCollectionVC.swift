@@ -10,6 +10,7 @@ final class TabCollectionVC: UICollectionViewController {
     
     var createNewTabButton: UIBarButtonItem!
     var closeAllTabsButton: UIBarButtonItem!
+    var filterTabsSearchBar: UISearchBar!
     
     // MARK: - Lifecycle Methods
     
@@ -45,6 +46,11 @@ final class TabCollectionVC: UICollectionViewController {
             spacer,
             createNewTabButton
         ]
+        
+        filterTabsSearchBar = UISearchBar()
+        filterTabsSearchBar.placeholder = TabCollectionVC.FILTER_TABS_SEARCH_BAR_PLACEHOLDER
+        navigationItem.titleView = filterTabsSearchBar
+        filterTabsSearchBar.delegate = vm
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -72,7 +78,7 @@ extension TabCollectionVC {
         _ collectionView: UICollectionView,
         numberOfItemsInSection section: Int
     ) -> Int {
-        return vm.tabs.count
+        return vm.filteredTabs.count
     }
     
     override func collectionView(
@@ -84,7 +90,7 @@ extension TabCollectionVC {
             for: indexPath
         ) as! TabCell
         
-        let relevantTab = vm.tabs[indexPath.item]
+        let relevantTab = vm.filteredTabs[indexPath.item]
         tabSnapshotCell.title = relevantTab.title
         
         return tabSnapshotCell
@@ -205,6 +211,15 @@ extension TabCollectionVC {
     func tabsLengthIsPositive() {
         closeAllTabsButton.isEnabled = true
     }
+    
+    func filterQueryTextDidChange() {
+        collectionView.reloadData()
+    }
+    
+    func filterQuerySearchBarCancelButtonClicked() {
+        filterTabsSearchBar.text = ""
+        filterTabsSearchBar.resignFirstResponder()
+    }
 }
 
 // MARK: - Constants
@@ -218,4 +233,6 @@ extension TabCollectionVC {
     
     /// The 􀅼 icon which appears in the toolbar and functions to add a new tab.
     private static let CREATE_NEW_TAB_BUTTON_IMAGE = UIImage(systemName: "plus")
+    
+    private static let FILTER_TABS_SEARCH_BAR_PLACEHOLDER = "Search Tabs"
 }
