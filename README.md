@@ -11,6 +11,7 @@ full web view.
 1. Basic Project Setup
 2. Programatically Displaying an (Empty) Collection View & Organizing Project
 3. Displaying A Tab Cell in the Collection View
+4. Implementing a Beautiful, Safari-Inspired Collection View Grid
 
 ## Chapter 1: Basic Project Setup
 
@@ -408,3 +409,251 @@ But note that we've hard coded the frame of the `TabCell`. So if you were to pus
 `Tab`s to the `tabs` array, they'd all overlap in the collection view. 
 ([Figure 3.3](./Documentation/3.3_TabCells_Overlap.png)) We'll address that in the next 
 chapter.
+
+## Chapter 4: Implementing a Beautiful, Safari-Inspired Collection View Grid
+
+In Chapter 3, we temporarily hard-coded the TabCell's frame just to make it visible. Now, 
+we'll create a proper grid layout that mirrors Safari's tab view. Let's first analyze 
+Safari's key design patterns:
+
+### Dynamic Aspect Ratios
+
+Unlike many grid layouts, Safari's tab cells don't maintain a fixed aspect ratio. Instead, 
+they adapt to the device's orientation:
+- In portrait mode, cells are taller and more square-like
+- In landscape mode, cells are wider and more rectangular
+
+### Adaptive Grid Layout
+
+The grid's structure responds to both orientation and content:
+- In portrait mode, there are 2 cells per row
+- In landscape mode, there are 3 cells per row
+- **Special case:** When displaying fewer cells than a full row (1-2 cells), each cell 
+  expands to fill more space, creating a balanced layout
+
+The following figure illustrates these layout patterns:
+
+![](./Documentation/4.1_Design_Considerations.png)
+
+The key to implementing both behaviors lies in a single UICollectionViewController method: 
+`collectionView(_:layout:sizeForItemAt:)`. This method not only controls our dynamic 
+aspect ratios, but also—perhaps surprisingly—handles our adaptive grid layout.
+
+By carefully calculating the cell sizes, we can let UICollectionView's natural flow 
+behavior handle the row wrapping. That is, if we, size cells to occupy half the available 
+width when in portrait and one-third the available width in landscape, the collection view
+will automatically wrap to a new row when there's insufficient space, creating our desired
+2-column and 3-column grids without additional configuration.
+
+### Step 1: Create Orientation Enum
+
+As discussed previously, portrait vs landscape orientation is essential to this UI. To
+begin to model this, we'll use an enum.
+1. In the "Models" folder, create a file called "Orientation.swift".
+2. Implement the enum as follows:
+``` swift
+enum Orientation {
+    case landscape
+    case portrait
+}
+```
+
+### Step 2: Define `orientation` Computed Property for Collection View
+
+1. Create a folder called "Extensions".
+2. In the "Extensions" folder, create a file called "UICollectionView+Extensions.swift".
+3. In the "UICollectionView+Extensions.swift" file, define a computed property which
+returns the orientation the collection view is by comparing its height and width.
+``` swift
+extension UICollectionView {
+    var orientation: Orientation {
+        return bounds.width > bounds.height ? .landscape : .portrait
+    }
+}
+```
+
+### Step 3: Ensure Layout Is Recomputed In Response to Device Rotation
+
+Since the flow layout will need to change when the screen rotates, we'll need to listen
+for rotation events and handle them by invalidating the layout. Do so by overriding the
+`viewWillTransition(to:with:)` method like so:
+
+``` swift
+override func viewWillTransition(
+    to size: CGSize,
+    with coordinator: UIViewControllerTransitionCoordinator
+) {
+    super.viewWillTransition(to: size, with: coordinator)
+    coordinator.animate(alongsideTransition: { _ in
+        if let layout = self.collectionView.collectionViewLayout as? UICollectionViewFlowLayout {
+            layout.invalidateLayout()
+            self.collectionView.layoutIfNeeded()
+        }
+    })
+}
+```
+
+### Step 4: Define Edge Insets for Collection View
+
+1. Define the following constant:
+``` swift
+extension TabCollectionVC {
+    private static let INSET_PADDING: CGFloat = 15
+}
+```
+2. Implement the `UICollectionViewController`'s "`insetForSectionAt`" method like so:
+``` swift
+func collectionView(
+    _ collectionView: UICollectionView,
+    layout collectionViewLayout: UICollectionViewLayout,
+    insetForSectionAt index: NSInteger
+) -> UIEdgeInsets {
+    UIEdgeInsets(
+        top: TabCollectionVC.INSET_PADDING,
+        left: collectionView.safeAreaInsets.left + TabCollectionVC.INSET_PADDING,
+        bottom: TabCollectionVC.INSET_PADDING,
+        right: collectionView.safeAreaInsets.right + TabCollectionVC.INSET_PADDING
+    )
+}
+```
+
+### Step 5: Define `itemsPerRow` Helper Function
+
+As discussed previously, the number of items we want to display in each row depends on
+both the orientation and the number of items in the `tabs` array. The following
+implementation captures the desired behavior and can be used later.
+
+``` swift
+private func itemsPerRow(
+    forOrientation orientation: Orientation, 
+    andTabCount tabCount: Int
+) -> CGFloat {
+    if (tabCount == 1 || tabCount == 2) { return CGFloat(tabCount) }
+    switch orientation {
+    case .portrait:
+        return 2
+    case .landscape:
+        return 3
+    }
+}
+```
+
+
+### Step 6: Calculating Width in the "`sizeForItemAt`" Method (Phase 1)
+
+As mentioned at the outset of this chapeter, our main goal is to implement the 
+"`sizeForItemAt`" method. Let's break the remaining work into distinct phases. In the 
+first phase, we'll write a preliminary version of the "`sizeForItemAt`" function we need 
+that accounts for the width, but not the height. Since the width is what determines the 
+number of items in each row, this first iteration of the function will acheive the 
+"Adaptive Grid Layout" effect. We won't account for the height. We'll just set the height
+equal to the width so that each cell has the bounds of a square.
+
+``` swift
+func collectionView(
+    _ collectionView: UICollectionView,
+    layout collectionViewLayout: UICollectionViewLayout,
+    sizeForItemAt indexPath: IndexPath
+) -> CGSize {
+    let orientation = collectionView.orientation
+    let safeAreaWidth = collectionView.safeAreaLayoutGuide.layoutFrame.width
+    
+    let rowItemCount = itemsPerRow(
+        forOrientation: orientation,
+        andTabCount: collectionView.numberOfItems(inSection: 0)
+    )
+    let interItemSpacing = TabCollectionVC.INSET_PADDING * CGFloat(2 * rowItemCount)
+    let itemWidth = (safeAreaWidth - interItemSpacing) / rowItemCount
+    
+    // TODO: Actually compute height to achieve "dynamic aspect ratios" in the next phase.
+    let itemHeight = itemWidth
+    
+    return CGSize(width: itemWidth, height: itemHeight)
+}
+```
+
+At this point, you should be able to run the project in the simulator and see that when
+the device is in portrait mode, each grid row has two cells, and in landscape mode, each
+grid row has three cells.
+
+![](./Documentation/4.2_Adaptive_Grid_Layout_With_Initial_Glitch.gif)
+
+One other thing to note is that there was a bit of a sizing issue when we first run the
+app. That's because we haven't yet removed the code to hard-code the cell size. We'll do
+that once we've completely phase 2.
+
+### Step 7: Calculating Height in the "`sizeForItemAt`" Method (Phase 2)
+
+Now that we have calculated the right width of each `TabCell`, it's pretty trivial to 
+calculate a height which will give us the "Dynamic Aspect Ratios" effect. Doing so gives
+us the second and complete iteration of the "`sizeForItemAt`" Method.
+
+``` swift
+func collectionView(
+    _ collectionView: UICollectionView,
+    layout collectionViewLayout: UICollectionViewLayout,
+    sizeForItemAt indexPath: IndexPath
+) -> CGSize {
+    let orientation = collectionView.orientation
+    let safeAreaWidth = collectionView.safeAreaLayoutGuide.layoutFrame.width
+    
+    let rowItemCount = itemsPerRow(
+        forOrientation: orientation,
+        andTabCount: collectionView.numberOfItems(inSection: 0)
+    )
+    let interItemSpacing = TabCollectionVC.INSET_PADDING * CGFloat(2 * rowItemCount)
+    let itemWidth = (safeAreaWidth - interItemSpacing) / rowItemCount
+    
+    let deviceAspectRatio = collectionView.bounds.height / collectionView.bounds.width
+    let squareAspectRatio = 1.0
+    let squarifiedAspectRatio = (squareAspectRatio + deviceAspectRatio) / 2
+    let aspectRatio = orientation == .portrait ? squarifiedAspectRatio : deviceAspectRatio
+    
+    let itemHeight = itemWidth * aspectRatio
+        
+    return CGSize(width: itemWidth, height: itemHeight)
+}
+```
+
+Recall our observation that "In portrait mode, cells are taller and more square-like". One
+cute trick leveraged in the above implementation to acheive a more square-like look was
+to average the device's aspect ratio with a square's aspect ratio (i.e. 1.0).
+
+At this point, the app should resemble the following:
+
+![](./Documentation/4.3_Dynamic_Aspect_Ratios_With_Initial_Glitch.gif)
+
+### Step 8: Addressing Initial Sizing Glitch
+
+Remove the line `tabSnapshotCell.frame = CGRect(x: 0, y: 0, width: 100, height: 200)` from
+the `collectionView(_,numberOfItemsInSection)` method. This should address the glitch
+observed on first application launch.
+
+### Step 9: Improve `itemsPerRow` Helper Function to Handle Special Cases
+
+Currently, the `itemsPerRow` function doesn't actually use the `tabCount` parameter passed
+into it. This means we are not handling the "special cases" described at the outset of
+this chapter. For instance, when there is only one item in the `tabs` array, that tab 
+should be bigger than it otherwise would be but it's not.
+
+![](./Documentation/4.4_Comparison_Shows_Special_Cases_Not_Handled.png)
+
+To address this, we can improve upon the `itemsPerRow` function as follows:
+
+``` swift
+private func itemsPerRow(for orientation: Orientation, and tabCount: Int) -> CGFloat {
+    if (tabCount == 1) { return 1.33 }
+    if (tabCount == 2) { return 2 }
+    switch orientation {
+    case .portrait:
+        return 2
+    case .landscape:
+        return 3
+    }
+}
+```
+
+This allows us to handle the edge case where there's only one item in `tabs` more 
+gracefully in the UI as demonstrated below:
+
+![](./Documentation/4.5_Single_Cell_Expands.png)
