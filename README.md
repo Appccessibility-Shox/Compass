@@ -9,6 +9,7 @@ full web view.
 ## Table of Contents
 
 1. Basic Project Setup
+2. Programatically Displaying an (Empty) Collection View & Organizing Project
 
 ## Chapter 1: Basic Project Setup
 
@@ -70,3 +71,92 @@ func scene(
 
 At this point, you should be able to run your app, and see a black screen. 
 ([Figure 1.5](./Documentation/1.5_Blank_Screen.png))
+
+## Chapter 2: Programatically Displaying an (Empty) Collection View
+
+Looking at a browser's UI, we can break it into several elements. We begin with a
+collection view where each cell corresponds to a tab. When we click on a particular cell,
+the corresponding webview is pushed onto a stack. Additionally, note that clicking a link
+sometimes creates a new tab, and that new tab is 'activated' via a swiping page animation.
+Additionally, in Safari at least, tabs don't start out by just loading a home page, they
+display a view controller with your "Shared with You" links, "Favorites".
+Hence, it seems we'll need the following:
+1. A `UINavigationController` to push and pop other view controllers.
+1. A `UICollectionViewController` to display tab cells.
+1. A `UIPageViewController` to display the webview and transition to new webviews when
+they're created.
+1. A custom `UIViewController` to display a webview or home screen whenever appropriate.
+
+In this chapter, we'll focus solely on creating the first two. We'll do this in keeping
+with MVVM architecture.
+
+### Step 1: Create the `RootNavigationVC` Class
+1. Ensure the `ViewController` inherits from `UINavigationController`.
+1. Rename the `ViewController` class to something more descriptive e.g. `RootNavigationVC`. 
+([Figure 2.1](./Documentation/2.1_Rename_ViewController.png)).
+1. Create a new folder named "Controllers" and drag the "RootNavigationVC.swift" file into
+it.
+
+### Step 2: Create the `TabCollectionVC` Class
+1. Inside the "Controllers" folder, create a new Swift file called "TabCollectionVC.swift".
+1. In that file, paste the following, which will simply make it easy to see:
+
+``` swift
+final class TabCollectionVC: UICollectionViewController {
+    override func viewDidLoad() {
+        collectionView.backgroundColor = .lightGray
+    }
+}
+```
+
+### Step 3: Configure the `RootNavigationVC` to Display the `TabCollectionVC`.
+
+The `TabCollectionVC` should be the top-most controller of the `RootNavigationVC`. Hence,
+we should have the `RootNavigationVC` create an instance of the `TabCollectionVC` and show
+it. Note that to initialize a `UICollectionViewController`, the 
+`UICollectionViewFlowLayout` can't be `nil`. Thus, we implement `RootNavigationVC` as
+follows:
+
+``` swift 
+final class RootNavigationVC: UINavigationController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let layout = UICollectionViewFlowLayout()
+        let tabCollectionVC = TabCollectionVC(collectionViewLayout: layout)
+        self.viewControllers = [tabCollectionVC]
+    }   
+}
+```
+
+If you were to run the application at this point, you should simply see a gray screen.
+([Figure 2.2](./Documentation/2.2_Empty_Gray_CollectionView.png))
+
+### Step 4: Implement Boilerplate for MVVM
+
+Since this app will grow quite large, it'll be good to use MVVM architecture to organize
+our code. We can get a head start on this by doing it now. Specifically, let's add some
+boilerplate for the "`TabCollectionVM`" class. This class will be responsible for (at 
+minimum):
+- owning and modifying the `tabs` array which the `TabCollectionVC` displays.
+- storing key data for the `tabs` array in persistent storage when the app closes.
+- restoring the `tabs` array from persistent storage when the app opens.
+- notifying the `TabCollectionVC` of view-relevant tab-related events. To be concrete, we
+plan to implement a "Close All" button for the collection view. But this button should be
+dimmed and untappable if the tabs array is already empty. Hence, the `TabCollectionVM`
+would need to notify the `TabCollectionVC` if/once the array becomes empty.
+
+1. Create a new file in the "Controllers" folder named "TabCollectionVM.swift".
+2. Provide a (dummy) implementation of this class for now.
+``` swift
+final class TabCollectionVM {
+    // TODO: Replace this dummy property with an actual array of `Tab` objects.
+    var tabs = [1, 2, 3]
+}
+```
+3. Modify the `TabCollectionVC` so that it instantiates a `TabCollectionVM`.
+``` swift
+final class TabCollectionVC: UICollectionViewController {
+    var vm = TabCollectionVM()
+    // ...
+}
+```
