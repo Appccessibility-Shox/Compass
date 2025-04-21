@@ -12,6 +12,7 @@ full web view.
 2. Programatically Displaying an (Empty) Collection View & Organizing Project
 3. Displaying A Tab Cell in the Collection View
 4. Implementing a Beautiful, Safari-Inspired Collection View Grid
+5. Adding Toolbar Buttons to Add and Close All Tabs
 
 ## Chapter 1: Basic Project Setup
 
@@ -657,3 +658,372 @@ This allows us to handle the edge case where there's only one item in `tabs` mor
 gracefully in the UI as demonstrated below:
 
 ![](./Documentation/4.5_Single_Cell_Expands.png)
+
+## Chapter 5: Adding Toolbar Buttons to Add and Close All Tabs
+
+In this chapter, we’ll add a toolbar with buttons to let users manage their tabs — 
+specifically, a "+" button to open a new tab and a "Close All" button to remove all 
+existing tabs.
+
+These buttons should only appear when the `TabCollectionVC` is the top view controller in 
+the navigation stack. Later on, when we push detail views (like a web page), we’ll show a 
+different set of toolbar buttons for in-tab navigation (e.g., forward/back). For now, 
+we’re focusing on actions relevant to the tab grid view.
+
+We’ll stick to the MVVM architecture introduced earlier. That means:
+
+- The view model (`TabCollectionVM`) will own and modify the tabs array.
+- The view controller (`TabCollectionVC`) will handle only UI-related logic.
+
+For example, if there are no open tabs, the “Close All” button should be disabled. The 
+view model will detect that state and notify the view controller to update the UI 
+accordingly.
+
+### Step 1: Setup the UI Skeleton
+
+1. Modify the `viewDidLoad` method for the `RootNavigationVC` class so that its toolbar is
+not hidden like so:
+
+``` swift
+final class RootNavigationVC: UINavigationController {
+    
+    override func viewDidLoad() {
+        // ...
+        setToolbarHidden(false, animated: false)
+    }
+    
+}
+```
+
+2. Add the following constants to the `TabCollectionVC`:
+
+``` swift
+private static let CLOSE_ALL_TABS_BUTTON_TEXT = "Close All"
+private static let CREATE_NEW_TAB_BUTTON_IMAGE = UIImage(systemName: "plus")
+```
+
+3. Modify the `TabCollectionVC` so that you create several new `UIBarButtonItems`. For now, 
+we'll leave the `action` as `nil` as we'll implement those actions later on in this 
+chapter. You can acheive this as follows:
+
+``` swift
+final class TabCollectionVC: UICollectionViewController {
+    // ...
+    var createNewTabButton: UIBarButtonItem!
+    var closeAllTabsButton: UIBarButtonItem!
+
+    override func viewDidLoad() {
+        // ...
+        createNewTabButton = UIBarButtonItem(
+            image: TabCollectionVC.CREATE_NEW_TAB_BUTTON_IMAGE,
+            style: .plain,
+            target: self,
+            action: nil
+        )
+        
+        closeAllTabsButton = UIBarButtonItem(
+            title: TabCollectionVC.CLOSE_ALL_TABS_BUTTON_TEXT,
+            style: .plain,
+            target: self,
+            action: nil
+        )
+    }
+}
+// ...
+```
+
+4. Create a spacer, which we'll use later to spread the buttons to opposite sides of the 
+toolbar.
+
+``` swift
+final class TabCollectionVC: UICollectionViewController {
+    // ...
+    override func viewDidLoad() {
+        // ...
+        let spacer = UIBarButtonItem(
+            barButtonSystemItem: .flexibleSpace,
+            target: nil,
+            action: nil
+        )
+    }
+}
+// ...
+```
+
+5. Now, we set the toolbar items for the `TabCollectionVC`.
+
+``` swift
+final class TabCollectionVC: UICollectionViewController {
+    // ...
+    override func viewDidLoad() {
+        // ...
+        toolbarItems = [
+            closeAllTabsButton,
+            spacer,
+            createNewTabButton
+        ]
+    }
+}
+// ...
+```
+
+At this point, when you run the app, you should see the following:
+
+![](./Documentation/5.1_Bar_Button_Items_Added_But_With_Nil_Actions.png)
+
+Aesthetically, this is exactly what we want. But the buttons don't do anything yet so the
+remainder of this chapter will focus on implementing that.
+
+### Step 2: Implement the Create New Tab Button
+
+One thing to note at the outset is that we need to both modify the `tabs` array but that
+isn't sufficient to update the collection view with an additional view. Rather, we have to
+do the additional step of calling the `UICollectionView`'s `insertItems(at:)` method. In
+terms of our MVVM architecture, then, the `TabCollectionVM` will modify the `tabs` array
+and the `TabCollectionVC` will call `insertItems(at:)` to update the view. Since 
+`insertItems(at:)` takes an `IndexPath` as a parameter, we'll have the `TabCollectionVM`'s
+method return that (and of course it'll be returning just the length of the `tabs` array
+since we'll be appending the new tab to the end of the `tabs` array). Note that the 
+`insertItems(at:)` method is the preferred way of getting the collection view to update, 
+rather than `reloadData()`, when we know exactly where the update ocurred since 
+`reloadData()` is not as performant.
+
+1. Introduce a new function called `createNewTabButtonPressed`. We'll implement it in a bit
+but for now just define the method signature:
+``` swift
+extension TabCollectionVC {
+    @objc func createNewTabButtonPressed() {
+        // TODO: Have `TabCollectionVM` update the `tabs` array.
+        // TODO: Update the `collectionView` using `insertItem(at:)
+    }
+}
+```
+
+2. Add `createNewTabButtonPressed` as the `action` for the `createNewTabButton`:
+
+``` swift
+createNewTabButton = UIBarButtonItem(
+    // ...
+    action: #selector(createNewTabButtonPressed)
+)
+```
+
+3. Define an `appendNewTabToTabsArray` function in the `TabCollectionVM` like so:
+
+``` swift
+extension TabCollectionVM {
+    func appendNewTabToTabsArray() -> IndexPath {
+        let newTab = Tab()
+        tabs.append(newTab)
+        
+        let newTabIndexPath = IndexPath(item: tabs.count - 1, section: 0)
+        return newTabIndexPath
+    }
+}
+```
+
+4. Call the `appendNewTabToTabsArray` method within `createNewTabButtonPressed`:
+``` swift
+extension TabCollectionVC {
+    @objc func createNewTabButtonPressed() {
+        let newTabIndexPath = vm.appendNewTabToTabsArray()
+        // TODO: Update the `collectionView` using `insertItem(at:)
+    }
+}
+```
+
+5. Update the Collection View at the `IndexPath` where the `Tab` was added
+
+``` swift
+extension TabCollectionVC {
+    @objc func createNewTabButtonPressed() {
+        let newTabIndexPath = vm.appendNewTabToTabsArray()
+        collectionView.insertItems(at: [newTabIndexPath])
+    }
+}
+```
+
+Now, when you run the application, you should see the "+" button is working as below:
+
+![](./Documentation/5.2_Create_New_Tab_Button_Functioning_Properly.gif)
+
+### Step 3: Implement the Close All Tabs Button
+
+To imlement the "Close All" button, we'll follow pretty much the same steps. In this case,
+though, we'll use the `UICollectionView`'s `reloadData` method since all the tabs will be
+gone.
+
+1. Introduce a new function called `closeAllTabsButtonPressed`. We'll implement it in a bit
+but for now just define the method signature:
+
+``` swift
+extension TabCollectionVC {
+    @objc func closeAllTabsButtonPressed() {
+        // TODO: Have `TabCollectionVM` update the `tabs` array.
+        // TODO: Update the `collectionView` using `reloadData()
+    }
+}
+```
+
+2. Add `closeAllTabsButtonPressed` as the `action` for the `closeAllTabsButton`:
+
+``` swift
+closeAllTabsButton = UIBarButtonItem(
+    // ...
+    action: #selector(closeAllTabsButtonPressed)
+)
+```
+
+3. Define a `closeAllTabs` function in the `TabCollectionVM` like so:
+
+``` swift
+extension TabCollectionVM {
+    func closeAllTabs() {
+        tabs = [Tab]()
+    }
+}
+```
+
+4. Call the `closeAllTabs` method within `closeAllTabsButtonPressed`:
+
+``` swift
+extension TabCollectionVC {
+    @objc func closeAllTabsButtonPressed() {
+        vm.closeAllTabs()
+        // TODO: Update the `collectionView` using `reloadData()
+    }
+}
+```
+
+5. Update the Collection View based on the changed data
+
+``` swift
+extension TabCollectionVC {
+    @objc func closeAllTabsButtonPressed() {
+        vm.closeAllTabs()
+        collectionView.reloadData()
+    }
+}
+```
+
+Now, when you run the application, you should see the "Close All" button is working as
+below:
+
+![](./Documentation/5.3_Delete_All_Tabs_Button_Functioning_Properly.gif)
+
+### Step 4: Disabling Close All Button When `tabs` is Empty
+
+When no tabs exist, the "Close All" button is useless. Hence, we should disable that 
+button. To do things like this, it's convenient to leverage the `didSet` method. Again,
+we'll be leveraging MVVM. In order for the `TabCollectionVM` to notify the 
+`TabCollectionVC` of view-relevant changes to the `tabs` array, the `TabCollectionVM` will
+need a reference to the `TabCollectionVC`.
+
+1. Edit the `TabCollectionVM` class so that it requires a reference to its view controller:
+``` swift
+final class TabCollectionVM {
+    let vc: TabCollectionVC
+    // ...
+    init(vc: TabCollectionVC) {
+        self.vc = vc
+    }
+}
+```
+
+2. Edit the code where `TabCollectionVC` instantiates a `TabCollectionVM` so that it gives
+the view model a reference to itself. The earliest we can possibly set the `vm` is within
+the `TabCollectionVC`'s initializer so let's just do it there (as opposed to within some
+other method like `viewDidLoad`) to avoid any possibility of a crash. To do this, we'll
+override the designated initializer.
+
+``` diff
+final class TabCollectionVC: UICollectionViewController {
+-    var vm: TabCollectionVM()
++    var vm: TabCollectionVM!
+    // ...
+}
+```
+
+``` swift
+final class TabCollectionVC: UICollectionViewController {
+    // ...
+    override init(collectionViewLayout: UICollectionViewLayout) {
+        super.init(collectionViewLayout: collectionViewLayout)
+        vm = TabCollectionVM(vc: self)
+    }
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+```
+
+3. Implement view-update methods in the `TabCollectionVC`:
+``` swift
+extension TabCollectionVC {
+    
+    func tabsLengthIsZero() {
+        closeAllTabsButton.isEnabled = false
+    }
+    
+    func tabsLengthIsPositive() {
+        closeAllTabsButton.isEnabled = true
+    }
+}
+```
+
+4. Invoke view-update methods in the `TabCollectionVM`:
+``` swift
+final class TabCollectionVM {
+    // ...
+    var tabs: [Tab] = [] {
+        didSet {
+            relayIfTabLengthIsPositiveOrZero()
+        }
+    }
+
+    func relayIfTabLengthIsPositiveOrZero() {
+        if tabs.count == 0 {
+            vc.tabsLengthIsZero()
+        } else {
+            vc.tabsLengthIsPositive()
+        }
+    }
+    // ...
+}
+```
+At this point, you should be able to see it basically working except that, when the app is
+launched, the state is not correct. 
+
+![](./Documentation/5.4_Close_All_Button_Working_Wtih_Glitch_On_App_Launch.gif)
+
+This is because, `tabs` is set to be an empty array when the `TabCollectionVM` is 
+initialized. This is because the `didSet` observer is not called when a property is first 
+initialized. There are probably more elegant ways to address this edge case, but I'm 
+choosing to address this by having the view controller emit an event to the view model 
+whenever its `viewWillAppear` method is called. This way the view model can communicate 
+any information which is relevant to the initial state of the views.
+
+5. Implement a function called `tabCollectionVCWillAppear` in the `TabCollectionVM` which
+will handle this event by relaying information about the tab state.
+``` swift
+extension TabCollectionVM {
+    func tabCollectionVCWillAppear() {
+        relayIfTabLengthIsPositiveOrZero()
+    }
+}
+```
+
+6. Override the `viewDidLoad` Method to invoke the VM's event handler
+``` swift 
+final class TabCollectionVC: UICollectionViewController {
+    // ...
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        vm.tabCollectionVCWillAppear()
+    }
+    // ...
+}
+```
+
+This addresses the glitch observed previously, so that the "Close All" button works
+perfectly!
