@@ -4,7 +4,12 @@ final class TabCollectionVC: UICollectionViewController {
     
     // MARK: - Dependencies
     
-    var vm = TabCollectionVM()
+    var vm: TabCollectionVM!
+    
+    // MARK: - UI Components
+    
+    var createNewTabButton: UIBarButtonItem!
+    var closeAllTabsButton: UIBarButtonItem!
     
     // MARK: - Lifecycle Methods
     
@@ -14,6 +19,48 @@ final class TabCollectionVC: UICollectionViewController {
             TabCell.self,
             forCellWithReuseIdentifier: String(describing: TabCell.self)
         )
+        
+        createNewTabButton = UIBarButtonItem(
+            image: TabCollectionVC.CREATE_NEW_TAB_BUTTON_IMAGE,
+            style: .plain,
+            target: self,
+            action: #selector(createNewTabButtonPressed)
+        )
+        
+        closeAllTabsButton = UIBarButtonItem(
+            title: TabCollectionVC.CLOSE_ALL_TABS_BUTTON_TEXT,
+            style: .plain,
+            target: self,
+            action: #selector(closeAllTabsButtonPressed)
+        )
+        
+        let spacer = UIBarButtonItem(
+            barButtonSystemItem: .flexibleSpace,
+            target: nil,
+            action: nil
+        )
+        
+        toolbarItems = [
+            closeAllTabsButton,
+            spacer,
+            createNewTabButton
+        ]
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        vm.tabCollectionVCWillAppear()
+    }
+    
+    // MARK: - Init
+    
+    override init(collectionViewLayout: UICollectionViewLayout) {
+        super.init(collectionViewLayout: collectionViewLayout)
+        vm = TabCollectionVM(vc: self)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 
@@ -133,10 +180,42 @@ extension TabCollectionVC {
     
 }
 
+// MARK: - Actions
+
+extension TabCollectionVC {
+    @objc func createNewTabButtonPressed() {
+        let newTabIndexPath = vm.appendNewTabToTabsArray()
+        collectionView.insertItems(at: [newTabIndexPath])
+    }
+    
+    @objc func closeAllTabsButtonPressed() {
+        vm.closeAllTabs()
+        collectionView.reloadData()
+    }
+}
+
+// MARK: - Handlers for VM-Emitted Events
+
+extension TabCollectionVC {
+    
+    func tabsLengthIsZero() {
+        closeAllTabsButton.isEnabled = false
+    }
+    
+    func tabsLengthIsPositive() {
+        closeAllTabsButton.isEnabled = true
+    }
+}
+
 // MARK: - Constants
 
 extension TabCollectionVC {
     
     private static let INSET_PADDING: CGFloat = 15
     
+    /// The title of the toolbar button which, when pressed, will close all opened tabs.
+    private static let CLOSE_ALL_TABS_BUTTON_TEXT = "Close All"
+    
+    /// The 􀅼 icon which appears in the toolbar and functions to add a new tab.
+    private static let CREATE_NEW_TAB_BUTTON_IMAGE = UIImage(systemName: "plus")
 }

@@ -7,6 +7,7 @@ final class RootNavigationVC: UINavigationController {
         let layout = UICollectionViewFlowLayout()
         let tabCollectionVC = TabCollectionVC(collectionViewLayout: layout)
         self.viewControllers = [tabCollectionVC]
+        setToolbarHidden(false, animated: false)
     }
     
 }
