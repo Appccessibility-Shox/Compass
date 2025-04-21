@@ -13,6 +13,7 @@ full web view.
 3. Displaying A Tab Cell in the Collection View
 4. Implementing a Beautiful, Safari-Inspired Collection View Grid
 5. Adding Toolbar Buttons to Add and Close All Tabs
+6. Filtering Tabs
 
 ## Chapter 1: Basic Project Setup
 
@@ -1027,3 +1028,206 @@ final class TabCollectionVC: UICollectionViewController {
 
 This addresses the glitch observed previously, so that the "Close All" button works
 perfectly!
+
+## Chapter 6: Filtering Tabs
+
+In this chapter, we'll be mimicking the "Search Tabs" behavior which Safari has, which
+allows users to quickly filter their tabs by their titles. This behavior is shown below.
+
+![](./Documentation/6.1_Filter_Tabs_Behavior_In_Safari.gif)
+
+### Step 1: Setup UI Skeleton
+
+1. Add the following constant to the `TabCollectionVC`:
+
+``` swift
+private static let FILTER_TABS_SEARCH_BAR_PLACEHOLDER = "Search Tabs"
+```
+
+2. Modify the `TabCollectionVC` so that you create a `UISearchBar` and set it as the
+`titleView` for.
+
+``` swift
+final class TabCollectionVC: UICollectionViewController {
+    // ...
+    var filterTabsSearchBar: UISearchBar!
+
+    override func viewDidLoad() {
+        // ...
+        filterTabsSearchBar = UISearchBar()
+        filterTabsSearchBar.placeholder = TabCollectionVC.FILTER_TABS_SEARCH_BAR_PLACEHOLDER
+        navigationItem.titleView = filterTabsSearchBar
+    }
+}
+```
+
+![](./Documentation/6.2_UI_Skeleton_Setup.png)
+
+But the UI doesn't do anything. To get the UI to update, we'll need the search bar to 
+notify us about text changes to its query. To be notified of this, we need to be the 
+`UISearchBar`'s `delegate`. In keeping with MVVM, we'll want to have the 
+`TabCollectionVM`, not the `TabCollectionVC`, be the `UISearchBarDelegate`.
+
+### Step 2: Make `TabCollectionVM` the seach bar's delegate.
+
+1. Set the `vm` as the `filterTabsSearchBar`'s `delegate`. Note that this will produce
+compiler errors for now, which we'll address later.
+
+``` swift
+final class TabCollectionVC: UICollectionViewController {
+    // ...
+    override func viewDidLoad() {
+        // ... 
+        filterTabsSearchBar.delegate = vm
+    }
+    // ...
+}
+```
+
+2. To address the compiler warnings, we need to make `TabCollectionVM` conform to
+`UISearchBarDelegate`. I don't understand why but, in order to do this, the compiler's
+making us have `TabCollectionVM` inherit from `NSObject` like so:
+
+``` swift
+final class TabCollectionVM: NSObject {
+    // ...
+}
+
+extension TabCollectionVM: UISearchBarDelegate {
+    // TODO: Implement to respond to filter query changes
+}
+```
+
+### Step 3: Make `tabs` private and only expose `filteredTabs` to the view controller.
+
+1. Define a `filterQuery` variable like so:
+``` swift
+final class TabCollectionVM: NSObject {
+    private var filterQuery = ""
+    // ...
+}
+```
+
+2. Mark the `tabs` array as `private`.
+``` swift
+final class TabCollectionVM: NSObject {
+    private var tabs: [Tab] = [] {
+        // ...
+    }
+    // ...
+}
+```
+
+3. Define a `filteredTabs` computed property as follows:
+``` swift
+final class TabCollectionVM: NSObject {
+    var filteredTabs: [Tab] {
+        if filterQuery.isEmpty {
+            return tabs
+        } else {
+            return tabs.filter { $0.title.lowercased().contains(filterQuery.lowercased()) }
+        }
+    }
+    // ...
+}
+```
+
+4. Update the `TabCollectionVC` so it refers to `filteredTabs` everywhere it used to refer
+to `tabs`.
+
+### Step 4: Updated `filterQuery` based on the search bar's contents using delegate method
+
+1. Implement the `searchBar(_, textDidChange)` method like so
+```swift
+extension TabCollectionVM: UISearchBarDelegate {
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        filterQuery = searchText
+        // TODO: Notify `TabCollectionVC` so it reloads the collection view visually
+    }
+}
+```
+
+### Step 5: Notify the `TabCollectionVC` of query changes
+
+Recall that it isn't enough to change the collectionView's underlying data. There's an
+additional step to notify the collection view that it needs to perform a visual update.
+To do this, add the following extensions:
+
+``` swift
+extension TabCollectionVM: UISearchBarDelegate {
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        filterQuery = searchText
+        vc.filterQueryTextDidChange()
+    }
+}
+```
+
+``` swift
+extension TabCollectionVC {
+    func filterQueryTextDidChange() {
+        collectionView.reloadData()
+    }
+}
+```
+
+At this point, we can see that filtering is working properly.
+
+![](./Documentation/6.3_Filtering_Demo.gif)
+
+This is working somewhat, but one thing to note is that it's impossible to dismiss the 
+keyboard once you've activated it. To address this, we should add a "Cancel" button. We 
+can implement this as follows:
+
+### Step 6: Show cancel button when relevant by implementing more delegate methods
+
+``` swift
+extension TabCollectionVM: UISearchBarDelegate {
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        searchBar.showsCancelButton = true
+    }
+    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+        searchBar.showsCancelButton = false
+    }
+    // ...
+}
+```
+
+### Step 7: Implement the cancel button 
+
+To implement the cancel button, we have another delegate method to implement 
+`searchBarCancelButtonClicked(_)`:
+
+``` swift
+extension TabCollectionVM: UISearchBarDelegate {
+
+    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        endSearchingAndReload()
+    }
+
+    private func endSearchingAndReload() {
+        // If the query string was already empty, no need to reload the collection view.
+        if filterQuery != "" {
+            filterQuery = ""
+            vc.filterQueryTextDidChange()
+        }
+        vc.filterQuerySearchBarCancelButtonClicked()
+    }
+    // ...
+}
+```
+
+``` swift
+extension TabCollectionVC {
+    func filterQuerySearchBarCancelButtonClicked() {
+        filterTabsSearchBar.text = ""
+        filterTabsSearchBar.resignFirstResponder()
+    }
+    // ...
+}
+```
+
+At this point, we can see the cancel button works to clear the `filterQuery` (the 
+underlying data model), clearing the query from the actual view, and resigning the first
+responder.
+
+![](./Documentation/6.4_Cancel_Button_Functioning_Properly.gif)

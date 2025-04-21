@@ -1,6 +1,7 @@
 import Foundation
+import UIKit
 
-final class TabCollectionVM {
+final class TabCollectionVM: NSObject {
     
     // MARK: - Dependencies
     
@@ -8,14 +9,30 @@ final class TabCollectionVM {
     
     // MARK: - Properties
     
-    var tabs: [Tab] = [] {
+    private var filterQuery = ""
+    
+    private var tabs: [Tab] = [] {
         didSet {
             relayIfTabLengthIsPositiveOrZero()
         }
     }
     
+    var filteredTabs: [Tab] {
+        if filterQuery.isEmpty {
+            return tabs
+        } else {
+            return tabs.filter { $0.title.lowercased().contains(filterQuery.lowercased()) }
+        }
+    }
+    
     init(vc: TabCollectionVC) {
         self.vc = vc
+        
+        let tabA = Tab()
+        tabA.title = "Wikipedia"
+        let tabB = Tab()
+        tabB.title = "Wikimedia"
+        self.tabs = [tabA, tabB]
     }
 }
 
@@ -52,5 +69,36 @@ extension TabCollectionVM {
         } else {
             vc.tabsLengthIsPositive()
         }
+    }
+}
+
+// MARK: - UISearchBarDelegate
+
+extension TabCollectionVM: UISearchBarDelegate {
+    
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        filterQuery = searchText
+        vc.filterQueryTextDidChange()
+    }
+    
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        searchBar.showsCancelButton = true
+    }
+    
+    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+        searchBar.showsCancelButton = false
+    }
+    
+    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        endSearchingAndReload()
+    }
+    
+    private func endSearchingAndReload() {
+        // If the query string was already empty, no need to reload the collection view.
+        if filterQuery != "" {
+            filterQuery = ""
+            vc.filterQueryTextDidChange()
+        }
+        vc.filterQuerySearchBarCancelButtonClicked()
     }
 }
