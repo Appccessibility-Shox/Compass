@@ -11,6 +11,14 @@ final class Tab: Identifiable {
     }
 }
 
+// MARK: - Equatable
+
+extension Tab: Equatable {
+    static func == (lhs: Tab, rhs: Tab) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 // MARK: - Constants
 
 extension Tab {

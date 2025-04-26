@@ -92,6 +92,7 @@ extension TabCollectionVC {
         
         let relevantTab = vm.filteredTabs[indexPath.item]
         tabSnapshotCell.title = relevantTab.title
+        tabSnapshotCell.delegate = self
         
         return tabSnapshotCell
     }
@@ -219,6 +220,18 @@ extension TabCollectionVC {
     func filterQuerySearchBarCancelButtonClicked() {
         filterTabsSearchBar.text = ""
         filterTabsSearchBar.resignFirstResponder()
+    }
+}
+
+// MARK: - TabCellDelegate
+
+extension TabCollectionVC: TabCellDelegate {
+    func delete(cell: TabCell) {
+        guard let filteredTabsIndexPath = collectionView.indexPath(for: cell) else {
+            fatalError("Cannot find indexPath for Tab whose deletion was requested.")
+        }
+        vm.deleteTabFromTabsArray(atIndexPathForFilteredTabs: filteredTabsIndexPath)
+        collectionView.deleteItems(at: [filteredTabsIndexPath])
     }
 }
 

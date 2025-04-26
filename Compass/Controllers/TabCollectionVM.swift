@@ -58,6 +58,16 @@ extension TabCollectionVM {
     func tabCollectionVCWillAppear() {
         relayIfTabLengthIsPositiveOrZero()
     }
+    
+    /// Deletes a `Tab` object from the `tabs` array given an indexPath *that refers to
+    /// the `filteredTabs` array*.
+    func deleteTabFromTabsArray(
+        atIndexPathForFilteredTabs filteredTabsArrayIndexPath: IndexPath
+    ) {
+        let tabToDelete = filteredTabs[filteredTabsArrayIndexPath.item]
+        let indexToDelete = tabs.firstIndex(of: tabToDelete)!
+        tabs.remove(at: indexToDelete)
+    }
 }
 
 // MARK: - Helper Functions
