@@ -14,6 +14,7 @@ full web view.
 4. Implementing a Beautiful, Safari-Inspired Collection View Grid
 5. Adding Toolbar Buttons to Add and Close All Tabs
 6. Filtering Tabs
+7. Closing Tabs via a Button
 
 ## Chapter 1: Basic Project Setup
 
@@ -1231,3 +1232,268 @@ underlying data model), clearing the query from the actual view, and resigning t
 responder.
 
 ![](./Documentation/6.4_Cancel_Button_Functioning_Properly.gif)
+
+## Chapter 7: Closing Tabs via a Button
+
+In this chapter, we will add a close button to enable users to delete a given tab. When a 
+user taps a particular tab's close button, we want that tab to fly off screen and then be
+deleted. It's fine to put the code to code within the `TabCell` but it is generally a
+bad practice to put business logic inside views. For this reason, we will be defining a 
+"`TabCellDelegate`" and setting the `TabCollectionVC` as the delegate for every cell. The
+`TabCollectionVC` will handle efficiently updating its `collectionView` but will rely on
+its view model to actually delete all traces of the corresponding `Tab` from persistent 
+storage (and any other business-logic). This chapter, therefore, gives the first example
+of the "delegate-protocol pattern" in this tutorial.
+
+### Step 1: Setup UI Skeleton
+
+1. Add the following constants to the `TabCell`:
+
+``` swift
+private static let CLOSE_BUTTON_SIZE: CGFloat = 20
+private static let CLOSE_BUTTON_INSET: CGFloat = 8
+private static let CLOSE_BUTTON_IMAGE = UIImage(systemName: "xmark.circle.fill")
+private static let CLOSE_BUTTON_COLOR = UIColor(red: 1.0, green: 0, blue: 0, alpha: 0.75)
+```
+
+2. Add the following UI component to the `TabCell`:
+``` swift
+private lazy var closeButton: UIButton = {
+    let button = UIButton(type: .system)
+    button.translatesAutoresizingMaskIntoConstraints = false
+    button.setImage(TabCell.CLOSE_BUTTON_IMAGE, for: .normal)
+    button.tintColor = TabCell.CLOSE_BUTTON_COLOR
+    return button
+}()
+```
+
+3. Modify `setupViews()` so that it adds the `closeButton` to the view hierarchy:
+``` diff
+private func setupViews() {
+    contentView.addSubview(snapshot)
+    contentView.addSubview(titleLabel)
++    contentView.addSubview(closeButton)
+
+    contentView.layer.cornerRadius = TabCell.STANDARD_CORNER_RADIUS
+    contentView.layer.masksToBounds = true 
+}
+```
+
+4. Modify `setupConstraints()` so that it sizes and positions the `closeButton` in the top
+right corner of the `TabCell`:
+
+``` swift
+NSLayoutConstraint.activate([
+    // ...
+    closeButton.topAnchor.constraint(
+        equalTo: contentView.topAnchor, constant: TabCell.CLOSE_BUTTON_INSET),
+    closeButton.trailingAnchor.constraint(
+        equalTo: contentView.trailingAnchor,
+        constant: -TabCell.CLOSE_BUTTON_INSET),
+    closeButton.widthAnchor.constraint(
+        equalToConstant: TabCell.CLOSE_BUTTON_SIZE),
+    closeButton.heightAnchor.constraint(
+        equalToConstant: TabCell.CLOSE_BUTTON_SIZE)
+])
+```
+
+At this point, each `TabCell` should look like the following:
+
+![](./Documentation/7.1_TabCell_UI_Skeleton.png)
+
+### Step 2: Delete cells in response to button taps usin the delegate-protocol pattern
+
+1. Create a "Protocols" folder.
+
+2. In the "Protocols" folder, create a "TabCellDelegate.swift" file and define the 
+`TabCellDelegate` protocol as follows:
+
+``` swift
+protocol TabCellDelegate {
+    func delete(cell: TabCell)
+}
+```
+
+3. Allow a `TabCell` to hold a reference to a `TabCellDelegate`. Use the `weak` keyword to
+avoid a reference cycle.
+
+``` swift
+final class TabCell: UICollectionViewCell {
+    // ...
+    weak var delegate: TabCellDelegate?
+}
+```
+
+4. Make `TabCollectionVC` conform to `TabCellDelegate`.
+
+``` swift
+extension TabCollectionVC: TabCellDelegate {
+    func delete(cell: TabCell) {
+        // TODO: First, request the `TabCollectionVM` delete the corresponding `Tab`.
+        // TODO: Second, update the collection view to remove the provided `TabCell`.
+    }
+}
+```
+
+5. Have the `TabCollectionVC` set itself as each `TabCell`'s delegate when it creates each
+cell in the "`cellForItemAt`" method.
+
+``` diff
+override func collectionView(
+    _ collectionView: UICollectionView,
+    cellForItemAt indexPath: IndexPath
+) -> UICollectionViewCell {
+    let tabSnapshotCell = collectionView.dequeueReusableCell(
+        withReuseIdentifier: String(describing: TabCell.self),
+        for: indexPath
+    ) as! TabCell
+    
+    let relevantTab = vm.filteredTabs[indexPath.item]
+    tabSnapshotCell.title = relevantTab.title
+    
++    tabSnapshotCell.delegate = self
+    
+    return tabSnapshotCell
+}
+```
+
+
+6. Partially implement the `delete(cell: TabCell)` method defined above as follows:
+
+``` swift
+extension TabCollectionVC: TabCellDelegate {
+    func delete(cell: TabCell) {
+        guard let filteredTabsIndexPath = collectionView.indexPath(for: cell) else {
+            fatalError("Cannot find indexPath for Tab whose deletion was requested.")
+        }
+        // TODO: Request the `TabCollectionVM` delete the corresponding `Tab`.
+        collectionView.deleteItems(at: [filteredTabsIndexPath])
+    }
+}
+```
+
+7. Finish implementing the `delete(cell: TabCell)` by first defining and then invoking a 
+`TabCollectionVM` method. Note that the `indexPath` which is passed into the `deleteTab`
+method refers to `filteredTabs`. But `filteredTabs` is a computed property which we 
+cannot, therefore, modify directly. Of course, what we need to do is simply find the index
+in `tabs` which holds the same `Tab` as the index passed in which refers to 
+`filteredTabs`. If you don't do this, then deleting a tab while also filtering tabs will
+likely result in some crash. The easiest way to do this translation from `filteredTabs` to
+`tabs` is to make `Tab` conform to `Equatable`.
+
+``` swift
+extension Tab: Equatable {
+    static func == (lhs: Tab, rhs: Tab) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+```
+
+``` swift
+extension TabCollectionVM {
+    func deleteTabFromTabsArray(
+        atIndexPathForFilteredTabs filteredTabsArrayIndexPath: IndexPath
+    ) {
+        let tabToDelete = filteredTabs[filteredTabsArrayIndexPath.item]
+        let indexToDelete = tabs.firstIndex(of: tabToDelete)!
+        tabs.remove(at: indexToDelete)
+    }
+}
+```
+
+``` diff
+extension TabCollectionVC: TabCellDelegate {
+    func delete(cell: TabCell) {
+        guard let filteredTabsIndexPath = collectionView.indexPath(for: cell) else {
+            fatalError("Cannot find indexPath for Tab whose deletion was requested.")
+        }
++        vm.deleteTabFromTabsArray(atIndexPathForFilteredTabs: filteredTabsIndexPath)
+        collectionView.deleteItems(at: [filteredTabsIndexPath])
+    }
+}
+```
+
+9. Configure the button so that, when tapped, runs a `closeButtonTapped()` function:
+``` swift
+private lazy var closeButton: UIButton = {
+    // ...
+    button.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
+    return button
+}()
+@objc func closeButtonTapped() {
+    // TODO: Implement by running an animation and asking delegate to delete the cell.
+}
+```
+
+10. Implement the `closeButtonTapped()` function defined above, ignoring the animation for
+the time being.
+
+``` swift
+@objc func closeButtonTapped() {
+    // TODO: Run an animation where the cell flies off the screen.
+    delegate?.delete(cell: self)
+}
+```
+
+At this point, you should see deletion behavior similar to the following GIF:
+
+![](./Documentation/7.2_Deleting_Tabs_Via_Button_No_Fly_Left_Animation.gif)
+
+### Step 3: Add an animation prior to the deletion
+
+In this step, we'll be adding liveliness to Compass by having each `TabCell` first fly off
+screen prior to actually getting deleted.
+
+1. Add the following constant to the `TabCell` class:
+
+``` swift
+extension TabCell {
+    private static let FLY_LEFT_SPEED = -5000.0
+}
+```
+
+2. Define a method like so and note that setting `self.alpha` is essential otherwise 
+you'll get a strange animation where the `TabCell` can be visibly seen flying back to its
+original location before getting deleted.
+
+``` swift
+extension TabCell {
+    
+    func flyLeft(
+        then completion: (() -> Void)
+    ) {
+        let distanceToGo = self.center.x + self.frame.width / 2
+        let speed = TabCell.FLY_LEFT_SPEED
+        
+        let duration = distanceToGo/speed
+        
+        UIView.animate(withDuration: duration, animations: {
+            self.transform = self.transform.translatedBy(x: -distanceToGo, y: 0)
+        }, completion: { (finished) in
+            if (finished) {
+                self.alpha = 0
+                completion()
+            }
+        })
+    }
+    
+}
+```
+
+3. Modify the `closeButtonTapped` method so that it runs `flyLeft` prior to it having the
+`delegate` delete the `TabCell`/`Tab` like so:
+``` swift
+@objc func closeButtonTapped() {
+    flyLeft(
+        then: {
+            self.delegate?.delete(cell: self)
+        }
+    )
+}
+```
+
+At this point, you should be able to press the close button, see the `TabCell` fly off
+screen, and then see the remaning tabs move and resize so as to deal with the deletion as
+demonstrated in the following GIF:
+
+![](./Documentation/7.3_Fly_Left_Animation_In_Action.gif)
