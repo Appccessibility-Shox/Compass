@@ -40,12 +40,36 @@ final class TabCell: UICollectionViewCell {
         set { titleLabel.text = newValue }
     }
     
+    // MARK: - Private Properties
+    
+    /// Property indicating whether this cell is currently being swiped.
+    ///
+    /// This is used to prevent `someCellIsSwiping` from being set to `false` by cells
+    /// whose gesture was explicitly cancelled because `someCellIsSwiping` was `true`.
+    /// Only the cell which was actually allowed to begin the process of swiping should
+    /// be able to set the `someCellIsSwiping` class variable.
+    private var isSwiping = false
+    
+    // MARK: - Static Variables
+    
+    /// A class attribute representing whether any TabCell is currently being swiped.
+    ///
+    /// This is used to prevents multiple cells from being swiped simultaneously.
+    static var someCellIsSwiping = false
+    
     // MARK: - Initialization
     
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupViews()
         setupConstraints()
+        
+        let swipeLeftGestureRecognizer = UIPanGestureRecognizer(
+            target: self,
+            action: #selector(handleGestureProgress)
+        )
+        self.addGestureRecognizer(swipeLeftGestureRecognizer)
+        swipeLeftGestureRecognizer.delegate = self
     }
     
     required init?(coder: NSCoder) {
@@ -99,6 +123,13 @@ final class TabCell: UICollectionViewCell {
 // MARK: - Animations
 
 extension TabCell {
+    
+    func flyBack() {
+        UIView.animate(withDuration: TabCell.FLY_BACK_ANIMATION_DURATION, animations: {
+            self.transform = .identity
+        })
+    }
+    
     func flyLeft(
         then completionHandler: @escaping (() -> Void)
     ) {
@@ -116,6 +147,18 @@ extension TabCell {
             }
         })
     }
+    
+    func slideHorizontally(byAmount translationAmount: CGFloat, withScaling scale: CGFloat) {
+        UIView.animate(
+            withDuration: TabCell.SLIDE_HORIZONTALLY_ANIMATION_DURATION,
+            animations: {
+                self.transform = .identity
+                    .translatedBy(x: translationAmount, y: 0)
+                    .scaledBy(x: scale, y: scale)
+            }
+        )
+    }
+    
 }
 
 // MARK: - Actions
@@ -127,6 +170,74 @@ extension TabCell {
                 self.delegate?.delete(cell: self)
             }
         )
+    }
+}
+
+// MARK: - Gestures
+
+extension TabCell {
+    
+    @objc func handleGestureProgress(sender: UIPanGestureRecognizer) {
+        self.layer.zPosition = 1
+        
+        let translationX = sender.translation(in: self).x
+        let translationLeft = -translationX
+        let speedX = sender.velocity(in: self).x
+        let speedLeft = -speedX
+        
+        switch sender.state {
+        case .began:
+            if (TabCell.someCellIsSwiping || sender.gestureDirection == .vertical) {
+                sender.cancel()
+            } else {
+                TabCell.someCellIsSwiping = true
+                self.isSwiping = true
+            }
+            delegate?.someTabCellIsBeingSwiped(isSwiping: TabCell.someCellIsSwiping)
+        case .changed:
+            let movingLeft = translationX < 0
+            let undampenedOffset = translationX
+            let dampenedOffset = translationX / TabCell.DIRECTIONAL_DAMPENING_FACTOR
+            let directionallyDampenedOffset = movingLeft ? undampenedOffset : dampenedOffset
+            slideHorizontally(
+                byAmount: directionallyDampenedOffset,
+                withScaling: TabCell.SLIDE_HORIZONTALLY_ANIMATION_DRAGGING_SCALE
+            )
+        case .ended, .cancelled:
+            self.layer.zPosition = 0
+            if (self.isSwiping == true) {
+                TabCell.someCellIsSwiping = false
+                self.isSwiping = false
+            }
+            
+            if (
+                translationLeft < TabCell.MINIMUM_LEFT_DISPLACEMENT_FOR_DELETION &&
+                speedLeft < TabCell.MINIMUM_LEFT_SPEED_FOR_DELETION
+            ) {
+                flyBack()
+            } else {
+                // The tab was dragged sufficiently fast and/or sufficiently far and
+                // should, therefore, be deleted.
+                flyLeft(
+                    then: {
+                        self.delegate?.delete(cell: self)
+                    }
+                )
+            }
+            delegate?.someTabCellIsBeingSwiped(isSwiping: TabCell.someCellIsSwiping)
+        default:
+            break
+        }
+    }
+    
+}
+
+extension TabCell: UIGestureRecognizerDelegate {
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        return true
     }
 }
 
@@ -164,4 +275,30 @@ extension TabCell {
     
     /// The speed at which the `TabCell` should fly off screen before being deleted.
     private static let FLY_LEFT_SPEED = -5000.0
+    
+    /// The duration (in seconds) of the `slideHorizontally(byAmount:withScaling:)` animation.
+    ///
+    /// Note that this value determines both how quickly the tab grows at the outset of
+    /// the animation and how quickly it moves to meet the user's finger.
+    private static let SLIDE_HORIZONTALLY_ANIMATION_DURATION = 0.2
+    
+    /// The amount by which a tab will be scaled by while the user is dragging it.
+    private static let SLIDE_HORIZONTALLY_ANIMATION_DRAGGING_SCALE = 1.05
+    
+    /// The duration (in seconds) of the `flyBack()` animation.
+    private static let FLY_BACK_ANIMATION_DURATION = 0.2
+    
+    /// How far a cell must be dragged for deletion, regardless of speed.
+    private static let MINIMUM_LEFT_DISPLACEMENT_FOR_DELETION = 125.0
+    
+    
+    /// How fast a cell must be swiped to be deleted, regardless of absolute displacement.
+    private static let MINIMUM_LEFT_SPEED_FOR_DELETION = 1000.0
+    
+    /// How much the motion of the TabCell will be dampened (relative to the user's
+    /// finger) when the customer drags a tab to the right.
+    ///
+    /// Dampening is important since it communicates to the customer that only leftward
+    /// swipes will be effective to delete a tab.
+    private static let DIRECTIONAL_DAMPENING_FACTOR = 5.0
 }

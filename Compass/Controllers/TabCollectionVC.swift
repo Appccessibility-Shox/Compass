@@ -150,7 +150,7 @@ extension TabCollectionVC: UICollectionViewDelegateFlowLayout {
         let aspectRatio = orientation == .portrait ? squarifiedAspectRatio : deviceAspectRatio
         
         let itemHeight = itemWidth * aspectRatio
-            
+        
         return CGSize(width: itemWidth, height: itemHeight)
     }
     
@@ -232,6 +232,10 @@ extension TabCollectionVC: TabCellDelegate {
         }
         vm.deleteTabFromTabsArray(atIndexPathForFilteredTabs: filteredTabsIndexPath)
         collectionView.deleteItems(at: [filteredTabsIndexPath])
+    }
+    
+    func someTabCellIsBeingSwiped(isSwiping: Bool) {
+        collectionView.isScrollEnabled = !isSwiping
     }
 }
 

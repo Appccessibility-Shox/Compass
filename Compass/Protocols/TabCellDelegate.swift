@@ -4,5 +4,7 @@ protocol TabCellDelegate: AnyObject {
     /// Efficiently updates the collection view to remove the provided `TabCell` and
     /// deletes the corresponding `Tab` from the data model.
     func delete(cell: TabCell)
+    
+    func someTabCellIsBeingSwiped(isSwiping: Bool)
 }
 
