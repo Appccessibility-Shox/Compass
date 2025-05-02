@@ -15,6 +15,7 @@ full web view.
 5. Adding Toolbar Buttons to Add and Close All Tabs
 6. Filtering Tabs
 7. Closing Tabs via a Button
+8. Deleting Tabs via a Gesture
 
 ## Chapter 1: Basic Project Setup
 
@@ -1497,3 +1498,468 @@ screen, and then see the remaning tabs move and resize so as to deal with the de
 demonstrated in the following GIF:
 
 ![](./Documentation/7.3_Fly_Left_Animation_In_Action.gif)
+
+## Chapter 8: Closing Tabs via a Gesture
+
+At present, when we close a tab via the button, the animation where it flies off to the
+left is visually fun, but it could be a bit confusing to the user. This is because the
+presence of that animation suggests to the user that flicking the tab to the left via a 
+gesture would also serve to delete the tab. But that's not the case currenlty and this
+chapter will focus on adding that feature.
+
+Here are a few key considerations with respect to this feature:
+1. We should only allow the user to swipe on a single tab at a time.
+2. Users can scroll the collection view by dragging a tab up or down. This should remain
+the case. And once a user begins scrolling the collection view vertically, tabs shouldn't 
+be able to get dragged horizontally simultaneously during that same gesture, and 
+vice-versa. This matches the behavior in Safari.
+3. In determining whether the gesture was intentional or not, we should consider both the
+speed and total displacement of the gesture. If the drag gesture was both too slow and not
+very far, we should consider it accidental and have the tab "fly back" to its original 
+position before the user started dragging.
+4. We should only allow swiping *left*, not swiping right. If the user attempts to drag a
+tab to the right, we should severely dampen the tab's movement (relative to the user's 
+finger) to indicate this isn't allowed. And no matter how fast or far the tab is dragged
+to the right, it should always fly back and never be deleted.
+
+### Step 1: Add a `UIPanGestureRecognizer` to the `TabCell`.
+
+Update the `TabCell`'s initializer so that it creates a `UIPanGestureRecognizer` for 
+itself, and make the handler for this function just print some details about the gesture.
+
+``` swift
+final class TabCell: UICollectionViewCell {
+    // ...
+    override init(frame: CGRect) {
+        // ...
+        let swipeLeftGestureRecognizer = UIPanGestureRecognizer(
+            target: self,
+            action: #selector(printSomeDetails)
+        )
+        self.addGestureRecognizer(swipeLeftGestureRecognizer)
+    }
+    // ...
+    @objc func printSomeDetails(sender: UIPanGestureRecognizer) {
+        let translationX = sender.translation(in: self).x
+        let translationY = sender.translation(in: self).y
+        print("Finger traveled (\(translationX), \(translationY)) from it's starting point.")
+
+        let speedX = sender.velocity(in: self).x
+        let speedY = sender.velocity(in: self).y
+        print("Finger moving at velocity (\(speedX), \(speedY))")
+    }
+}
+```
+
+At this point, you should be able to see various logs in the console like the following.
+
+![](./Documentation/8.1_Logs_Printed_About_Gesture.gif)
+
+Also, at this point you should be able to observe our first problem. Whereas previously,
+we were able to use the tab as a surface to drag on in order to scroll the collection view, 
+now that is not working. We can still drag the space between tabs in order to scroll the
+collection view but as per consideration 2, that's not what we want. The issue is 
+demonstrated in the below demo:
+
+![](./Documentation/8.2_Not_Able_To_Scroll_Collection_View_By_Draggin_Tab_Vertically.gif)
+
+The reason for this issue is that, by default, the `UIPanGestureRecognizer` will not
+recognize gestures simultaneously with other gestures. In the next step, we'll fix this
+issue.
+
+### Step 2: Implement a `UIGestureRecognizerDelegate` method to reenable scrolling
+
+We can change this behavior by assigning a delegate for the `UIPanGestureRecognizer` and 
+using the `UIGestureRecognizerDelegate`'s 
+[`gesturerecognizer(_:shouldrecognizesimultaneouslywith:)`](https://developer.apple.com/documentation/uikit/uigesturerecognizerdelegate/gesturerecognizer(_:shouldrecognizesimultaneouslywith:)) 
+method. Per UIKit's documentation, this method "Asks the delegate if two gesture 
+recognizers should be allowed to recognize gestures simultaneously." Of course, to allow
+the cell to also participate in the collection view scrolling gesture, we'd want to answer
+in the affirmative to that ask.
+
+- Set the `TabCell` as the `delegate` for the `UIPanGestureRecognizer`
+
+``` swift
+final class TabCell: UICollectionViewCell {
+    // ...
+    override init(frame: CGRect) {
+        // ...
+        swipeLeftGestureRecognizer.delegate = self
+    }
+    // ...
+}
+```
+
+- Make `TabCell` conform to `UIGestureRecognizerDelegate`.
+- Implement `gesturerecognizer(_:shouldrecognizesimultaneouslywith:)` as follows:
+
+``` swift
+extension TabCell: UIGestureRecognizerDelegate {
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        return true
+    }
+}
+```
+ 
+At this point, the ability to scroll up and down the collection view by dragging the tab
+veritically has been restored.
+
+![](./Documentation/8.3_Again_Able_To_Scroll_Collection_View_By_Dragging_Tab_Vertically.gif)
+
+### Step 3: Move `TabCell` Horizontaly During the Pan Gesture.
+
+Previously, we have just using `printSomeDetails()` to simply print how far the finger has
+moved, relative to it's starting position. Let's instead write a function which will 
+actually animate the `TabCell` so that it slides horizontally during this gesture. To 
+address consideration 4, we'll want to dampen the animation by some "directional dampening 
+factor" if the user is dragging the tab to the right. 
+
+- Rename the `printSomeDetails(sender:)` function to `handleGestureProgress(sender:)`.
+- Define a new animation called `slideHorizontally(byAmount:withScaling:)` as shown. This 
+animation will cause the tab to grow slightly during the animation to give the illusion 
+that it's floating above the other tabs. Furthermore, it will cause the `TabCell` to move
+to the user's finger. The `SLIDE_HORIZONTALLY_DURATION` determines both the speed at which
+the tab grows and how quickly it moves to match the position of the user's finger.
+
+``` swift
+extension TabCell {
+    func slideHorizontally(byAmount translationAmount: CGFloat, withScaling scale: CGFloat) {
+        UIView.animate(
+            withDuration: UIView.SLIDE_HORIZONTALLY_ANIMATION_DURATION, 
+            animations: {
+                self.transform = .identity
+                    .translatedBy(x: translationAmount, y: 0)
+                    .scaledBy(x: scale, y: scale)
+            }
+        )
+    }
+
+    private static let SLIDE_HORIZONTALLY_ANIMATION_DURATION = 0.2
+}
+```
+- Update the `handleGestureProgress(sender:)` function like so:
+``` swift
+extension TabCell {
+    @objc func handleGestureProgress(sender: UIPanGestureRecognizer) {
+        let translationX = sender.translation(in: self).x
+        slideHorizontally(
+            byAmount: translationX,
+            withScaling: TabCell.SLIDE_HORIZONTALLY_ANIMATION_DRAGGING_SCALE
+        )
+    }
+}
+```
+
+You should have something like the following demo at this point.
+
+![](./Documentation/8.4_Tabs_Can_Be_Dragged_But_Remain_At_Dragged_Location_And_Rightward_Motion_Is_Not_Dampened.gif)
+
+In the gif, you can see we've made some progress. Specifically, we're able to drag the tab
+from its starting location to a location to the left or right. And the distance the tab 
+travels from its "true location" (`.identity`) always matches the distance the finger has
+moved during the most recent gesture. But, currently, when the gesture finishes there's
+no possibility for the tab to either fly off to the left (and be deleted) or fly back to
+its starting position. The tab is just left wherever we put it. This is clearly an issue
+since, for example, after we leave a tab somewhere (let's say we displaced it to the left 
+by `-50` and left it there), then start a new gesture where we drag our finger to the 
+right by just `+5`, the `TabCell` will then traverse a distance of `55` even though the 
+finger barely moved. The key to fixing this is to make the tab more decisive. It either 
+needs to fly back to `.identity` at the end of the animation or fly off to the left and 
+be deleted. Another issue with the current implementation is we haven't added any 
+dampening to the rightward movement of the tab.
+
+### Step 4: Make `TabCell` return to its starting position at the end of the gesture.
+
+Eventually, we want the `TabCell` to be able to either fly off the screen to the left and
+be deleted or return to its starting position. But just to make some incremental progress,
+let's start by *always* having the `TabCell` return to its starting position at the end of
+the gesture. To do this, it's good to know that `UIGestureRecognizer`s (such as 
+`UIPanGestureRecognizer`) expose a property called `state` that will let us know whether
+the gesture is being updated (i.e. the finger is moving) as well as when the gesture is
+over. 
+
+1. Add the following animation, which will move the cell to it's "true position" within
+0.2 seconds.
+
+``` swift
+extension TabCell {
+    func flyBack() {
+        UIView.animate(withDuration: TabCell.FLY_BACK_ANIMATION_DURATION, animations: {
+            self.transform = .identity
+        })
+    }
+    private static let FLY_BACK_ANIMATION_DURATION = 0.2
+}
+```
+
+2. Update `handleGestureProgress(sender:)` to run the `flyBack` animation when the gesture
+is over like so:
+``` swift
+extension TabCell {
+    @objc func handleGestureProgress(sender: UIPanGestureRecognizer) {
+        let translationX = sender.translation(in: self).x
+        
+        switch sender.state {
+        case .changed:
+            slideHorizontally(
+                byAmount: translationX,
+                withScaling: TabCell.SLIDE_HORIZONTALLY_ANIMATION_DRAGGING_SCALE
+            )
+        case .ended, .cancelled:
+            flyBack()
+        default:
+            break
+        }
+    }
+}
+```
+
+At this point, you should see that the `TabCell` always returns to its starting position
+when the animation ends. This behavior is demonstrated in the following gif.
+
+![](./Documentation/8.5_Tabs_Return_To_Starting_Position_After_Gesture_Ends.gif)
+
+### Step 5: Enable `TabCell` to fly off screen and be deleted
+
+Currently, the tab always flies back to its starting position. But, as per consideration 
+3, we need to determine if the swiping left gesture is intentional and, if so, have the
+tab fly off to the left and be deleted from the collection view.
+
+- Update `handleGestureProgress(sender:)` like so:
+``` swift
+extension TabCell {
+
+    @objc func handleGestureProgress(sender: UIPanGestureRecognizer) {
+        let translationX = sender.translation(in: self).x
+        let translationLeft = -translationX
+        let speedX = sender.velocity(in: self).x
+        let speedLeft = -speedX
+        
+        switch sender.state {
+        case .changed:
+            slideHorizontally(
+                byAmount: translationX,
+                withScaling: TabCell.SLIDE_HORIZONTALLY_ANIMATION_DRAGGING_SCALE
+            )
+        case .ended, .cancelled:
+            if (
+                translationLeft < TabCell.MINIMUM_LEFT_DISPLACEMENT_FOR_DELETION &&
+                speedLeft < TabCell.MINIMUM_LEFT_SPEED_FOR_DELETION
+            ) {
+                flyBack()
+                break
+            } else {
+                // The tab was dragged sufficiently fast and/or sufficiently far and
+                // should, therefore, fly off to the left and be deleted from the 
+                // collection view.
+                flyLeft(
+                    then: {
+                        self.delegate?.delete(cell: self)
+                    }
+                )
+            }
+        default:
+            break
+        }
+    }
+
+
+    private static let MINIMUM_LEFT_DISPLACEMENT_FOR_DELETION = 125.0
+    
+    private static let MINIMUM_LEFT_SPEED_FOR_DELETION = 1000.0
+}
+```
+
+At this point, you should be able to swipe left on a tab to delete it, as demonstrated in
+the following gif.
+
+![](./Documentation/8.6_Tabs_Can_Be_Deleted_Via_Swiping_Right.gif)
+
+### Step 6: Dampen rightward movement of cells
+
+- Update the handler when `sender.state` is changed like so:
+
+``` swift
+extension TabCell {
+    @objc func handleGestureProgress(sender: UIPanGestureRecognizer) {
+        // ...
+        switch sender.state {
+        case .changed:
+            let movingLeft = translationX < 0
+            let undampenedOffset = translationX
+            let dampenedOffset = translationX / TabCell.DIRECTIONAL_DAMPENING_FACTOR
+            let directionallyDampenedOffset = movingLeft ? undampenedOffset : dampenedOffset
+            slideHorizontally(
+                byAmount: directionallyDampenedOffset,
+                withScaling: TabCell.SLIDE_HORIZONTALLY_ANIMATION_DRAGGING_SCALE
+            )
+        // ...
+        }
+    }
+    private static let DIRECTIONAL_DAMPENING_FACTOR = 5.0
+}
+```
+
+At this point, you should see that rightward movement is dampened as demonstrated below:
+
+![](./Documentation/8.7_Rightward_Dragging_Is_Dampened.gif)
+
+### Step 7: Bring `TabCell` to front during animation
+
+Currently, it's possible for the `TabCell` to be dragged behind another `TabCell`. This
+conflicts with the goal of scaling the `TabCell` during the dragging animation. 
+Specifically, we want to make it feel as though the tab is being picked up while the user
+is dragging it. To improve this illusion, we can set the `CALayer`'s `zPosition` property.
+
+``` swift
+extension TabCell {
+    @objc func swipeToDelete(sender: UIPanGestureRecognizer) {
+        // Moves cell above other cells z-axis-wise.
+        self.layer.zPosition = 1
+        // ...
+        case .ended, .cancelled:
+            self.layer.zPosition = 0
+    }
+}
+```
+
+![](./Documentation/8.8_Dragged_Tab_Is_Always_On_Top.gif)
+
+### Step 8: Prevent multiple cells from being dragged at once.
+
+1. Introduce the following class attribute
+
+``` swift
+extension TabCell {
+    private var isSwiping = false
+    static var someCellIsSwiping: Bool = false
+}
+```
+
+1. Create a file called "UIPanGestureRecognizer+Extensions.swift" and add the following
+helper method to to cancel a gesture.
+``` swift
+extension UIPanGestureRecognizer {
+    func cancel() {
+        self.isEnabled = false
+        self.isEnabled = true
+    }
+}
+```
+
+1. Cancel the gesture if it tries to begin while `someCellIsSwiping` is already `true`.
+``` swift
+extension TabCell {
+    @objc func handleGestureProgress(sender: UIPanGestureRecognizer) {
+        // ...
+        switch sender.state {
+        case .began:
+            if TabCell.someCellIsSwiping {
+                sender.cancel()
+            }
+        // ...
+        }
+}
+```
+
+1. Set `TabCell.someCellIsSwiping` and `isSwiping` based on the swiping progress. Only
+allow the single tab cell who's currently swiping to set the class variable
+`TabCell.someCellIsSwiping`.
+
+``` swift
+extension TabCell {
+    @objc func handleGestureProgress(sender: UIPanGestureRecognizer) {
+        // ...
+        switch sender.state {
+        case .began:
+            if TabCell.someCellIsSwiping {
+                sender.cancel()
+            } else {
+                TabCell.someCellIsSwiping = true
+                self.isSwiping = true
+            }
+        // ...
+        case .ended, .cancelled:
+            self.layer.zPosition = 0
+            if (self.isSwiping == true) {
+                TabCell.someCellIsSwiping = false
+                self.isSwiping = false
+            }
+        }
+    }
+}
+```
+
+### Step 9: Prevent scroll view from scrolling while a cell is swiping
+
+1. Add a method to the `TabCellDelegate` protocol:
+
+``` swift
+protocol TabCellDelegate: AnyObject {
+    // ...
+    func someTabCellIsBeingSwiped(isSwiping: Bool)
+}
+```
+
+1. Implement that method as follows:
+``` swift
+extension TabCollectionVC: TabCellDelegate {
+    func delete(cell: TabCell) {
+        guard let indexPath = collectionView?.indexPath(for: cell) else {
+            fatalError("Cannot find indexPath for Tab whose deletion was requested.")
+        }
+        vm.deleteTab(at: indexPath)
+        collectionView?.deleteItems(at: [indexPath])
+    }
+    
+    func someTabCellIsBeingSwiped(isSwiping: Bool) {
+        collectionView.isScrollEnabled = !isSwiping
+    }
+}
+```
+
+1. Call the method in the `handleGestureProgress(sender:)` method whenever a cell begins 
+or ends swiping.
+
+At this point, you should notice that (as desired) it's impossible to scroll the 
+collection view once a cell begins swiping. But also notice that it's impossible to *not*
+be swiping a cell even if you intended to scroll vertically. To fix this, we should cancel
+the gesture if the direction is largely vertical, which we can do as follows.
+
+1. Add the following to the `UIPanGestureRecognizer` extension.
+``` swift
+extension UIPanGestureRecognizer {
+    // ...
+    enum GestureDirection {
+        case horizontal
+        case vertical
+    }
+    var gestureDirection: GestureDirection {
+        let speedX = abs(self.velocity(in: self.view).x)
+        let speedY = abs(self.velocity(in: self.view).y)
+        
+        return abs(speedY) > abs(speedX) ? .vertical : .horizontal
+    }
+}
+```
+1. Update the `.began` block within the `handleGestureProgress(sender:)` as follows:
+``` swift
+extension TabCell {
+    // ...
+    @objc func handleGestureProgress(sender: UIPanGestureRecognizer) {
+        // ...
+        case .began:
+            if (TabCell.someCellIsSwiping || sender.gestureDirection == .vertical) {
+                sender.cancel()
+        // ...
+    }
+}
+```
+
+At this point, you should see that we can swipe left to delete a cell and scroll up and
+down, and which we do will depend on the general direction of the gesture at its start.
+
+![](./Documentation/8.10_Able_To_Swipe_Left_And_Scroll_But_Not_Simultaneously_As_Desired.gif)
