@@ -4,6 +4,7 @@ final class Tab: Identifiable {
     
     var id: String
     var title: String
+    var url: URL?
     
     init() {
         self.id = UUID().uuidString

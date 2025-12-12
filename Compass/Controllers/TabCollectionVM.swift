@@ -30,8 +30,10 @@ final class TabCollectionVM: NSObject {
         
         let tabA = Tab()
         tabA.title = "Wikipedia"
+        tabA.url = URL(string: "https://en.wikipedia.org/wiki/Main_Page")
         let tabB = Tab()
         tabB.title = "Wikimedia"
+        tabB.url = URL(string: "https://www.wikimedia.org/")
         self.tabs = [tabA, tabB]
     }
 }

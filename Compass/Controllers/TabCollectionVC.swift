@@ -234,6 +234,20 @@ extension TabCollectionVC: TabCellDelegate {
         collectionView.deleteItems(at: [filteredTabsIndexPath])
     }
     
+    func copyURL(cell: TabCell) {
+        guard let indexPath = collectionView.indexPath(for: cell) else { return }
+        let tabs = vm.filteredTabs
+        guard indexPath.row < tabs.count, let url = tabs[indexPath.row].url else { return }
+        UIPasteboard.general.string = url.absoluteString
+    }
+
+    func canCopyURL(cell: TabCell) -> Bool {
+        guard let indexPath = collectionView.indexPath(for: cell) else { return false }
+        let tabs = vm.filteredTabs
+        guard indexPath.row < tabs.count else { return false }
+        return tabs[indexPath.row].url != nil
+    }
+    
     func someTabCellIsBeingSwiped(isSwiping: Bool) {
         collectionView.isScrollEnabled = !isSwiping
     }

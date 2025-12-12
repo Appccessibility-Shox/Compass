@@ -16,6 +16,7 @@ full web view.
 6. Filtering Tabs
 7. Closing Tabs via a Button
 8. Deleting Tabs via a Gesture
+9. Deleting Tabs and Copying URLs via a Force Touch Menu
 
 ## Chapter 1: Basic Project Setup
 
@@ -1963,3 +1964,311 @@ At this point, you should see that we can swipe left to delete a cell and scroll
 down, and which we do will depend on the general direction of the gesture at its start.
 
 ![](./Documentation/8.10_Able_To_Swipe_Left_And_Scroll_But_Not_Simultaneously_As_Desired.gif)
+
+## Chapter 9: Deleting Tabs and Copying URLs via a Context Menu
+
+In this chapter, we’ll add a Safari-style context menu to each tab so users can 
+**force touch** on a tab snapshot to:
+
+1. **Copy the tab’s URL** into the system clipboard, and  
+2. **Close the tab** using the same fly-left animation from previous chapters.
+
+We’ll:  
+
+- Enrich the `Tab` model with an optional `url` (just for the short-term),  
+- Have the view model to seed some sample URLs for testing,  
+- Extend the `TabCellDelegate` so the cell can ask the controller to copy URLs, and  
+- Attach a `UIContextMenuInteraction` to `TabCell` so the menu appears when the user force
+touch the snapshot.
+
+Below is a video of the Safari application on iOS showing exactly the sort of user 
+experience we're trying to acheive.
+
+![](./Documentation/9.1_Context_Menu_Behavior_In_Safari.gif)
+
+---
+
+### Step 1: Add URLs to the `Tab` model and sample data
+
+First, we extend the `Tab` model so each tab can optionally hold a `URL`. Then we’ll 
+assign URLs to the sample tabs we create in the view model so the “Copy URL” action has 
+something to work with. Note that, in the future, we'll not actually want to make this a 
+property of the tab, but rather the `Tab` will contain a webview and we'll use its URL as 
+the source of truth. But, for now, the following approach will let us move quickly.
+
+**1.1 – Extend `Tab` with an optional `url`**
+
+```
+final class Tab: Identifiable {
+    
+    var id: String
+    var title: String
+    var url: URL?
+    
+    init() {
+        self.id = UUID().uuidString
+        self.title = Tab.DEFAULT_TITLE
+    }
+}
+```
+
+**1.2 – Seed URLs in `TabCollectionVM`**
+
+In `TabCollectionVM`, after you create the initial sample tabs, set their URLs:
+
+```
+final class TabCollectionVM: NSObject {
+    // ...
+    override init() {
+        // ...
+        let tabA = Tab()
+        tabA.title = "Wikipedia"
+        tabA.url = URL(string: "https://en.wikipedia.org/wiki/Main_Page")
+        
+        let tabB = Tab()
+        tabB.title = "Wikimedia"
+        tabB.url = URL(string: "https://www.wikimedia.org/")
+        
+        self.tabs = [tabA, tabB]
+    }
+}
+```
+
+With this, our sample tabs now look more like realistic browser tabs.
+
+---
+
+### Step 2: Extend the `TabCellDelegate` protocol for copying URLs
+
+Next, we give `TabCell` a way to ask “Can I show a Copy URL option?” and “Please copy
+my URL now.” That responsibility belongs in the **view controller**, so we extend the
+delegate protocol accordingly.
+
+```
+protocol TabCellDelegate: AnyObject {
+    /// Deletes the corresponding `Tab` from the data model.
+    func delete(cell: TabCell)
+    
+    /// Copies the URL for the `Tab` that cell represents to the user's clipboard.
+    func copyURL(cell: TabCell)
+    
+    /// Used to determine whether the copy URL button should be shown in the context menu.
+    func canCopyURL(cell: TabCell) -> Bool
+    
+    func someTabCellIsBeingSwiped(isSwiping: Bool)
+}
+```
+
+These three methods will power the context menu:
+
+- `copyURL(cell:)` – perform the actual copy operation.
+- `canCopyURL(cell:)` – decide if “Copy URL” should be visible.
+- `delete(cell:)` – already used by the close-button/swipe behavior; we’ll reuse it 
+for the context menu’s “Close” action.
+
+---
+
+### Step 3: Implement URL copying logic in `TabCollectionVC`
+
+Now we implement the two new delegate methods in the view controller. Both methods
+rely on the **filtered** tab list, so they behave correctly even when the user is 
+filtering tabs via the search bar.
+
+Inside the `TabCollectionVC` extension that conforms to `TabCellDelegate`, add:
+
+```
+extension TabCollectionVC: TabCellDelegate {
+    
+    func copyURL(cell: TabCell) {
+        guard let indexPath = collectionView.indexPath(for: cell) else { return }
+        let tabs = vm.filteredTabs
+        guard indexPath.row &lt; tabs.count,
+              let url = tabs[indexPath.row].url else { return }
+        
+        UIPasteboard.general.string = url.absoluteString
+    }
+    
+    func canCopyURL(cell: TabCell) -> Bool {
+        guard let indexPath = collectionView.indexPath(for: cell) else { return false }
+        let tabs = vm.filteredTabs
+        guard indexPath.row &lt; tabs.count else { return false }
+        return tabs[indexPath.row].url != nil
+    }
+    
+    func delete(cell: TabCell) {
+        // (Existing implementation)
+        guard let filteredTabsIndexPath = collectionView.indexPath(for: cell) else {
+            fatalError("Cannot find indexPath for Tab whose deletion was requested.")
+        }
+        vm.deleteTabFromTabsArray(atIndexPathForFilteredTabs: filteredTabsIndexPath)
+        collectionView.deleteItems(at: [filteredTabsIndexPath])
+    }
+    
+    func someTabCellIsBeingSwiped(isSwiping: Bool) {
+        collectionView.isScrollEnabled = !isSwiping
+    }
+}
+```
+
+**Key points:**
+
+- We always look up the cell’s position via `collectionView.indexPath(for:)`.
+- We index into `vm.filteredTabs` so it behaves properly when filtering is active.
+- The “Copy URL” action only appears when `canCopyURL` returns `true` (i.e. the tab
+has a non-`nil` URL).
+
+---
+
+### Step 4: Attach a context menu interaction to `TabCell`
+
+Now we give each `TabCell` a `UIContextMenuInteraction` so it can show a context 
+menu when the user force touches the snapshot.
+
+**4.1 – Add a stored property for the interaction**
+
+In `TabCell`:
+
+```
+final class TabCell: UICollectionViewCell {
+    // ...
+    private var contextMenuInteraction: UIContextMenuInteraction?
+    // ...
+}
+```
+
+**4.2 – Create and attach the interaction in `init(frame:)`**
+
+Still in `TabCell`’s initializer:
+
+```
+final class TabCell: UICollectionViewCell {
+    // ...
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupViews()
+        setupConstraints()
+        
+        let swipeLeftGestureRecognizer = UIPanGestureRecognizer(
+            target: self,
+            action: #selector(handleGestureProgress(sender:))
+        )
+        self.addGestureRecognizer(swipeLeftGestureRecognizer)
+        swipeLeftGestureRecognizer.delegate = self
+        
+        // Context menu interaction
+        let interaction = UIContextMenuInteraction(delegate: self)
+        snapshot.addInteraction(interaction)
+        snapshot.isUserInteractionEnabled = true
+        self.contextMenuInteraction = interaction
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    // ...
+}
+```
+
+We attach the interaction to `snapshot` so the menu appears when the user presses 
+directly on the tab preview image.
+
+---
+
+### Step 5: Implement the context menu delegate on `TabCell`
+
+Next, we make `TabCell` conform to `UIContextMenuInteractionDelegate` and define the menu 
+items. This is where we:
+
+- Ask the delegate if “Copy URL” should be shown.
+- Add a “Close” action that reuses the existing `flyLeft` animation and deletion logic.
+
+**5.1 – Conform to `UIContextMenuInteractionDelegate`**
+
+```
+extension TabCell: UIContextMenuInteractionDelegate {
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let delegate = self.delegate else { return nil }
+        
+        return UIContextMenuConfiguration(
+            identifier: nil,
+            previewProvider: nil
+        ) { _ in
+            var actions: [UIAction] = []
+            
+            // Copy URL action (only if allowed)
+            if delegate.canCopyURL(cell: self) {
+                let copyURL = UIAction(
+                    title: TabCell.COPY_URL_CONTEXT_MENU_ACTION_TITLE,
+                    image: UIImage(systemName: "doc.on.clipboard")
+                ) { _ in
+                    delegate.copyURL(cell: self)
+                }
+                actions.append(copyURL)
+            }
+            
+            // Close tab action (always available)
+            let close = UIAction(
+                title: TabCell.CLOSE_CONTEXT_MENU_ACTION_TITLE,
+                image: UIImage(systemName: "xmark"),
+                attributes: .destructive
+            ) { _ in
+                self.flyLeft(then: { self.delegate?.delete(cell: self) })
+            }
+            actions.append(close)
+            
+            return UIMenu(children: actions)
+        }
+    }
+}
+```
+
+**Behavior:**
+
+- If the tab has a URL (`canCopyURL == true`), the menu contains:
+  - **Copy URL**
+  - **Close**
+- If it doesn’t have a URL, the menu only contains:
+  - **Close**
+
+Either way, closing a tab via the menu animates it off-screen with `flyLeft`, then 
+delegates deletion back to `TabCollectionVC`, just like the close button and swipe gesture
+from earlier chapters.
+
+---
+
+### Step 6: Add string constants for menu titles
+
+Finally, we centralize the menu titles next to the other `TabCell` constants:
+
+```
+extension TabCell {
+    // ...
+    static let COPY_URL_CONTEXT_MENU_ACTION_TITLE = "Copy URL"
+    static let CLOSE_CONTEXT_MENU_ACTION_TITLE = "Close"
+}
+```
+
+If you later decide to localize strings or tweak wording, you can do it here without
+touching the menu-building logic.
+
+---
+
+### Step 7: Try it out
+
+At this point, you should be able to:
+
+1. **Press hard** on a tab snapshot,
+2. See a context menu with:
+   - **Copy URL** (only when the tab has a URL), and  
+   - **Close** (always),
+3. Choose **Copy URL** and paste the result elsewhere (the tab’s `url.absoluteString`), 
+and  
+4. Choose **Close** to watch the tab fly left and disappear from the grid, just as it does
+with the close button and swipe gesture.
+
+Here's a GIF demonstrating what the final result should be like:
+
+![](./Documentation/9.2_Final_Result.gif)

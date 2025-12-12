@@ -50,6 +50,8 @@ final class TabCell: UICollectionViewCell {
     /// be able to set the `someCellIsSwiping` class variable.
     private var isSwiping = false
     
+    private var contextMenuInteraction: UIContextMenuInteraction?
+    
     // MARK: - Static Variables
     
     /// A class attribute representing whether any TabCell is currently being swiped.
@@ -70,6 +72,11 @@ final class TabCell: UICollectionViewCell {
         )
         self.addGestureRecognizer(swipeLeftGestureRecognizer)
         swipeLeftGestureRecognizer.delegate = self
+        
+        let interaction = UIContextMenuInteraction(delegate: self)
+        snapshot.addInteraction(interaction)
+        snapshot.isUserInteractionEnabled = true
+        self.contextMenuInteraction = interaction
     }
     
     required init?(coder: NSCoder) {
@@ -241,6 +248,41 @@ extension TabCell: UIGestureRecognizerDelegate {
     }
 }
 
+extension TabCell: UIContextMenuInteractionDelegate {
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let delegate = self.delegate else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+            var actions: [UIAction] = []
+
+            // Copy URL action
+            if delegate.canCopyURL(cell: self) {
+                let copyURL = UIAction(
+                    title: TabCell.COPY_URL_CONTEXT_MENU_ACTION_TITLE,
+                    image: UIImage(systemName: "doc.on.clipboard")
+                ) { _ in
+                    delegate.copyURL(cell: self)
+                }
+                actions.append(copyURL)
+            }
+
+            // Close tab action
+            let close = UIAction(
+                title: TabCell.CLOSE_CONTEXT_MENU_ACTION_TITLE,
+                image: UIImage(systemName: "xmark"),
+                attributes: .destructive
+            ) { _ in
+                self.flyLeft(then: { self.delegate?.delete(cell: self) })
+            }
+            actions.append(close)
+
+            return UIMenu(children: actions)
+        }
+    }
+}
+
 // MARK: - Constants
 
 extension TabCell {
@@ -301,4 +343,7 @@ extension TabCell {
     /// Dampening is important since it communicates to the customer that only leftward
     /// swipes will be effective to delete a tab.
     private static let DIRECTIONAL_DAMPENING_FACTOR = 5.0
+    
+    static let COPY_URL_CONTEXT_MENU_ACTION_TITLE = "Copy URL"
+    static let CLOSE_CONTEXT_MENU_ACTION_TITLE = "Close"
 }
